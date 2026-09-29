@@ -1,12 +1,9 @@
-import base64
 import io
-from dotenv import load_dotenv
 import streamlit as st
 import os
 import pdf2image
-import google.generativeai as genai
-
-load_dotenv()
+from google import genai
+from google.genai import types
 
 
 def get_api_key():
@@ -25,35 +22,39 @@ if not api_key:
     )
     st.stop()
 
-genai.configure(api_key=api_key)
+
+client = genai.Client(api_key=api_key)
 
 
-def get_gemini_response(system_prompt, pdf_content, job_description):
-    model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content([system_prompt, pdf_content[0], job_description])
+def get_gemini_response(system_prompt, image_bytes, job_description):
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=[
+            system_prompt,
+            types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+            job_description,
+        ],
+    )
     return response.text
 
 
 def input_pdf_setup(uploaded_file):
     if uploaded_file is not None:
-        ## Convert the pdf to image
-        images = pdf2image.convert_from_bytes(uploaded_file.read())
+        file_bytes = uploaded_file.read()
+        if not file_bytes:
+            raise ValueError("The uploaded PDF is empty.")
+        try:
+            images = pdf2image.convert_from_bytes(file_bytes)
+        except Exception as exc:
+            raise RuntimeError("Unable to convert the uploaded PDF to image.") from exc
+        if not images:
+            raise ValueError("No pages were found in the uploaded PDF.")
 
         first_page = images[0]
 
-        ## Convert to bytes
         img_byte_arr = io.BytesIO()
-        first_page.save(img_byte_arr, format='JPEG')
-        img_byte_arr = img_byte_arr.getvalue()
-
-        pdf_parts = [
-            {
-               "mime_type": "image/jpeg",
-               "data": base64.b64encode(img_byte_arr).decode() # encode to base64 
-
-            }
-        ]
-        return pdf_parts
+        first_page.save(img_byte_arr, format="JPEG")
+        return img_byte_arr.getvalue()
     else:
        raise FileNotFoundError("No File uploaded")
    
@@ -111,7 +112,11 @@ if selected_prompt:
     elif uploaded_file is None:
         st.warning("Please upload a PDF")
     else:
-        pdf_content = input_pdf_setup(uploaded_file)
-        response = get_gemini_response(selected_prompt, pdf_content, input_text)
-        st.subheader("The response is")
-        st.write(response)
+        try:
+            pdf_content = input_pdf_setup(uploaded_file)
+            response = get_gemini_response(selected_prompt, pdf_content, input_text)
+        except Exception as exc:
+            st.error(f"Failed to process resume with Gemini: {exc}")
+        else:
+            st.subheader("The response is")
+            st.write(response)
