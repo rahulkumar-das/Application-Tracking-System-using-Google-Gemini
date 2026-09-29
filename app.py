@@ -1,29 +1,45 @@
 import base64
 import io
 from dotenv import load_dotenv
+import streamlit as st
+import os
+import pdf2image
+import google.generativeai as genai
 
 load_dotenv()
 
 
-import streamlit as st
-import os
-from PIL import Image
-import pdf2image
-import google.generativeai as genai
+def get_api_key():
+    try:
+        if "GOOGLE_API_KEY" in st.secrets:
+            return st.secrets["GOOGLE_API_KEY"]
+    except Exception:
+        pass
+    return os.getenv("GOOGLE_API_KEY")
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-def get_gemini_response(input, pdfContent, prompt):
-    model=genai.GenerativeModel('gemini-pro-vision')
-    response=model.generate_content([input, pdfContent[0], prompt])
+api_key = get_api_key()
+if not api_key:
+    st.error(
+        "Google API key not found. Configure GOOGLE_API_KEY in Streamlit secrets or environment variables."
+    )
+    st.stop()
+
+genai.configure(api_key=api_key)
+
+
+def get_gemini_response(system_prompt, pdf_content, job_description):
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content([system_prompt, pdf_content[0], job_description])
     return response.text
 
-def input_pdf_setup(uploaded_file):
-   if uploaded_file is not None:
-        ## Convert the pdf to image
-        images=pdf2image.convert_from_bytes(uploaded_file.read())
 
-        first_page=images[0]
+def input_pdf_setup(uploaded_file):
+    if uploaded_file is not None:
+        ## Convert the pdf to image
+        images = pdf2image.convert_from_bytes(uploaded_file.read())
+
+        first_page = images[0]
 
         ## Convert to bytes
         img_byte_arr = io.BytesIO()
@@ -38,7 +54,7 @@ def input_pdf_setup(uploaded_file):
             }
         ]
         return pdf_parts
-   else:
+    else:
        raise FileNotFoundError("No File uploaded")
    
 
@@ -52,7 +68,7 @@ if uploaded_file is not None:
     st.write("PDF Uploaded Successfully")
 
 submit1 = st.button("Tell me about the Resume")
-submit2 = st.button("How can I Imporvise the resume")
+submit2 = st.button("How can I Improve the resume")
 submit3 = st.button("What are the keywords that are missing")
 submit4 = st.button("Percentage match")
 
@@ -79,39 +95,23 @@ and deep ATS functionality, your task is to evaluate the resume against the prov
 the job description. First the output should come as percentage and then keywords missing and last final thoughts.
 """
 
-if input_text!="":
-    if submit1:
-        if uploaded_file is not None:
-            pdf_content=input_pdf_setup(uploaded_file)
-            response=get_gemini_response(input_prompt1, pdf_content, input_text)
-            st.subheader("The response is ")
-            st.write(response)
-        else:
-            st.write("Please upload a PDF")
-    elif submit2:
-        if uploaded_file is not None:
-            pdf_content=input_pdf_setup(uploaded_file)
-            response=get_gemini_response(input_prompt2, pdf_content, input_text)
-            st.subheader("The response is ")
-            st.write(response)
-        else:
-            st.write("Please upload a PDF")
-    elif submit3:
-        if uploaded_file is not None:
-            pdf_content=input_pdf_setup(uploaded_file)
-            response=get_gemini_response(input_prompt3, pdf_content, input_text)
-            st.subheader("The response is ")
-            st.write(response)
-        else:
-            st.write("Please upload a PDF")
-    elif submit4:
-        if uploaded_file is not None:
-            pdf_content=input_pdf_setup(uploaded_file)
-            response=get_gemini_response(input_prompt4, pdf_content, input_text)
-            st.subheader("The response is ")
-            st.write(response)
-        else:
-            st.write("Please upload a PDF")
-else:
-    st.write("Please enter Job Description")
+selected_prompt = None
+if submit1:
+    selected_prompt = input_prompt1
+elif submit2:
+    selected_prompt = input_prompt2
+elif submit3:
+    selected_prompt = input_prompt3
+elif submit4:
+    selected_prompt = input_prompt4
 
+if selected_prompt:
+    if not input_text.strip():
+        st.warning("Please enter Job Description")
+    elif uploaded_file is None:
+        st.warning("Please upload a PDF")
+    else:
+        pdf_content = input_pdf_setup(uploaded_file)
+        response = get_gemini_response(selected_prompt, pdf_content, input_text)
+        st.subheader("The response is")
+        st.write(response)
