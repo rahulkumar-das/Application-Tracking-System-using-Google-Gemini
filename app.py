@@ -28,7 +28,7 @@ client = genai.Client(api_key=api_key)
 
 def get_gemini_response(system_prompt, image_bytes, job_description):
     response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-3.8-flash",
         contents=[
             system_prompt,
             types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
